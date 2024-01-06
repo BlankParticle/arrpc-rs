@@ -1,4 +1,4 @@
-use crate::structs::ActivityMessage;
+use crate::structs::IpcActivityMessage;
 use anyhow::Result;
 use futures_util::{lock::Mutex, SinkExt, StreamExt};
 use owo_colors::OwoColorize;
@@ -14,12 +14,12 @@ use tokio_tungstenite::{accept_async, tungstenite::Message};
 use tracing::{debug, info};
 
 pub enum BridgeCommand {
-    Message(ActivityMessage),
+    Message(Box<IpcActivityMessage>),
     Close,
 }
 
 type ClientMap = Arc<Mutex<HashMap<SocketAddr, UnboundedSender<BridgeCommand>>>>;
-type ActivityMap = Arc<Mutex<HashMap<String, ActivityMessage>>>;
+type ActivityMap = Arc<Mutex<HashMap<String, IpcActivityMessage>>>;
 
 #[derive(Debug)]
 pub struct BridgeServer {
@@ -137,7 +137,7 @@ impl BridgeServer {
         Ok(())
     }
 
-    pub async fn send_activity(&self, msg: ActivityMessage) -> Result<()> {
+    pub async fn send_activity(&self, msg: IpcActivityMessage) -> Result<()> {
         self.activity_map
             .lock()
             .await
@@ -146,7 +146,7 @@ impl BridgeServer {
             .lock()
             .await
             .iter()
-            .try_for_each(|(_, tx)| tx.send(BridgeCommand::Message(msg.clone())))?;
+            .try_for_each(|(_, tx)| tx.send(BridgeCommand::Message(Box::new(msg.clone()))))?;
         Ok(())
     }
 

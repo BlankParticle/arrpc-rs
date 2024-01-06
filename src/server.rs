@@ -1,6 +1,9 @@
 use crate::{
-    ipc::{IpcCommand, IpcFrame, IpcMessage, IpcServer},
-    structs::ActivityMessage,
+    ipc::{
+        server::IpcServer,
+        structs::{IpcCommand, IpcFrame, IpcMessage},
+    },
+    structs::{IpcActivityMessage, IpcPartialActivityMessage},
 };
 use anyhow::Result;
 use serde_json::json;
@@ -9,20 +12,20 @@ use tokio::{sync::mpsc, task};
 pub struct Server;
 
 impl Server {
-    pub async fn try_bind() -> Result<mpsc::Receiver<ActivityMessage>> {
+    pub async fn try_bind() -> Result<mpsc::Receiver<IpcActivityMessage>> {
         let mut ipc = IpcServer::try_bind().await?;
         let (tx, rx) = mpsc::channel(1);
         task::spawn(async move {
             let mut client_id = None;
             loop {
-                if let Some((id, msg)) = ipc.recv().await {
+                if let Some((socket_id, msg)) = ipc.recv().await {
                     match msg {
                         IpcMessage::Frame(frame) => {
                             if let Some(args) = frame.args {
-                                tx.send(ActivityMessage::new(
+                                tx.send(IpcPartialActivityMessage::to_full_message(
                                     Some(args.activity),
-                                    id.to_string(),
                                     args.pid,
+                                    socket_id.to_string(),
                                     &client_id,
                                 ))
                                 .await
@@ -33,7 +36,7 @@ impl Server {
                         IpcMessage::Handshake(data) => {
                             client_id.replace(data.client_id);
                             ipc.send(
-                                id,
+                                socket_id,
                                 IpcCommand::Frame(IpcFrame {
                                     cmd: "DISPATCH".to_string(),
                                     evt: Some("READY".to_string()),
